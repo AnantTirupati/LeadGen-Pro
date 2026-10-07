@@ -57,7 +57,14 @@ export default function DashboardPage() {
         }),
       });
 
-      const data = await res.json();
+      let data: any;
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await res.json();
+      } else {
+        const text = await res.text();
+        throw new Error(text || `Server error (${res.status})`);
+      }
 
       if (!res.ok || !data.success) {
         setSearchError(data.error || 'Failed to search for businesses.');
@@ -67,9 +74,9 @@ export default function DashboardPage() {
         setBusinesses(data.businesses || []);
         setHasSearched(true);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('[Search Client Error]', err);
-      setSearchError('Network connection error. Please check your connection and try again.');
+      setSearchError(err?.message && !err.message.includes('<!DOCTYPE') ? err.message : 'Failed to retrieve search results. Please check your API keys or try again.');
       setBusinesses([]);
       setHasSearched(true);
     } finally {
