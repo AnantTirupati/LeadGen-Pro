@@ -4,7 +4,7 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
-  LayoutDashboard,
+  Home,
   Search,
   Bookmark,
   Send,
@@ -12,7 +12,6 @@ import {
   Settings,
   LogOut,
   X,
-  User as UserIcon,
 } from 'lucide-react';
 import { createBrowserSupabaseClient } from '@/lib/supabase/client';
 
@@ -24,18 +23,18 @@ interface SidebarProps {
 }
 
 const NAV_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, href: '/dashboard' },
+  { id: 'home', label: 'Home', icon: Home, href: '/' },
   { id: 'find-leads', label: 'Find Leads', icon: Search, href: '/dashboard' },
   { id: 'saved-leads', label: 'Saved Leads (CRM)', icon: Bookmark, href: '/dashboard/leads' },
-  { id: 'campaigns', label: 'Campaigns', icon: Send, href: '/dashboard/leads' },
-  { id: 'analytics', label: 'Analytics', icon: BarChart3, href: '/dashboard/leads' },
-  { id: 'settings', label: 'Settings', icon: Settings, href: '/dashboard' },
+  { id: 'campaigns', label: 'Campaigns', icon: Send, href: '/dashboard/campaigns' },
+  { id: 'analytics', label: 'Analytics', icon: BarChart3, href: '/dashboard/analytics' },
+  { id: 'settings', label: 'Settings', icon: Settings, href: '/dashboard/settings' },
 ];
 
 export default function Sidebar({
   mobileOpen = false,
   onClose,
-  activeTab = 'dashboard',
+  activeTab = 'find-leads',
   setActiveTab,
 }: SidebarProps) {
   const pathname = usePathname();
@@ -161,9 +160,14 @@ export default function Sidebar({
         {NAV_ITEMS.map((item) => {
           const Icon = item.icon;
           const isActive =
-            pathname === item.href ||
+            (item.id === 'home' && pathname === '/') ||
+            (item.id === 'find-leads' && pathname === '/dashboard') ||
             (item.id === 'saved-leads' && pathname.startsWith('/dashboard/leads')) ||
+            (item.id === 'campaigns' && pathname.startsWith('/dashboard/campaigns')) ||
+            (item.id === 'analytics' && pathname.startsWith('/dashboard/analytics')) ||
+            (item.id === 'settings' && pathname.startsWith('/dashboard/settings')) ||
             activeTab === item.id;
+
           return (
             <Link
               key={item.id}

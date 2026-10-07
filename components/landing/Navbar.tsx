@@ -2,10 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import { createBrowserSupabaseClient } from '@/lib/supabase/client';
 
 export default function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [user, setUser] = useState<unknown>(null);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -14,6 +16,25 @@ export default function Navbar() {
 
     window.addEventListener('scroll', handleScroll, { passive: true });
     return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    const supabase = createBrowserSupabaseClient();
+    if (!supabase) return;
+
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      setUser(user || null);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const closeMenu = () => setMobileMenuOpen(false);
@@ -52,9 +73,11 @@ export default function Navbar() {
         </ul>
 
         <div className="nav__actions">
-          <Link href="/login" className="btn btn--secondary btn--nav" style={{ marginRight: '0.25rem' }}>
-            Sign In
-          </Link>
+          {!user && (
+            <Link href="/login" className="btn btn--secondary btn--nav" style={{ marginRight: '0.25rem' }}>
+              Sign In
+            </Link>
+          )}
           <Link href="/dashboard" className="btn btn--primary btn--nav" id="nav-cta">
             Dashboard
           </Link>
@@ -81,11 +104,13 @@ export default function Navbar() {
           <li><a href="#pricing" onClick={closeMenu}>Pricing</a></li>
         </ul>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginTop: '1rem' }}>
-          <Link href="/login" className="btn btn--secondary" onClick={closeMenu} style={{ width: '100%', textAlign: 'center' }}>
-            Sign In
-          </Link>
+          {!user && (
+            <Link href="/login" className="btn btn--secondary" onClick={closeMenu} style={{ width: '100%', textAlign: 'center' }}>
+              Sign In
+            </Link>
+          )}
           <Link href="/dashboard" className="btn btn--primary" onClick={closeMenu} style={{ width: '100%', textAlign: 'center' }}>
-            Launch Dashboard
+            Dashboard
           </Link>
         </div>
       </div>

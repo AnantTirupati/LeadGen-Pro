@@ -253,3 +253,64 @@ test('11. Lead Removal / Unsave', async () => {
   const leads = await getSavedLeadsFromDb();
   assert.equal(leads.some((l) => l.id === leadId || l.businessId === leadId), false);
 });
+
+test('12. Bookmark Direct Save: Saves lead with full metadata directly without requiring audit', async () => {
+  const bookmarkBiz = {
+    googlePlaceId: 'mock_place_bookmark_101',
+    name: 'Patna Fitness Center',
+    category: 'Gym',
+    address: 'Boring Road, Patna',
+    phone: '+91 612 123 4567',
+    website: 'https://patnafitness.example.com',
+    rating: 4.8,
+    reviewCount: 350,
+    googleMapsUrl: 'https://maps.google.com/?q=Patna+Fitness',
+    hasWebsite: true,
+  };
+
+  const savedLead = await saveLeadInDb({
+    businessId: bookmarkBiz.googlePlaceId,
+    business: bookmarkBiz,
+    status: 'NEW',
+    userId: 'user_test_bookmark_owner',
+  });
+
+  assert.ok(savedLead.id, 'Should generate a valid lead ID');
+  assert.equal(savedLead.businessId, 'mock_place_bookmark_101');
+  assert.equal(savedLead.status, 'NEW');
+  assert.equal(savedLead.business?.name, 'Patna Fitness Center');
+  assert.equal(savedLead.business?.address, 'Boring Road, Patna');
+
+  // Verify lead appears in saved list
+  const userLeads = await getSavedLeadsFromDb({ userId: 'user_test_bookmark_owner' });
+  const found = userLeads.find((l) => l.businessId === 'mock_place_bookmark_101');
+  assert.ok(found, 'Saved lead must appear in user saved leads query');
+  assert.equal(found?.business?.name, 'Patna Fitness Center');
+});
+
+test('13. Bookmark Deduplication: Re-saving an already bookmarked lead does not duplicate', async () => {
+  const bookmarkBiz = {
+    googlePlaceId: 'mock_place_bookmark_dedup',
+    name: 'Royal Bakery',
+    category: 'Bakery',
+    address: 'Main St',
+    hasWebsite: false,
+  };
+
+  const save1 = await saveLeadInDb({
+    businessId: bookmarkBiz.googlePlaceId,
+    business: bookmarkBiz,
+    status: 'NEW',
+    userId: 'user_dedup_test',
+  });
+
+  const save2 = await saveLeadInDb({
+    businessId: bookmarkBiz.googlePlaceId,
+    business: bookmarkBiz,
+    status: 'NEW',
+    userId: 'user_dedup_test',
+  });
+
+  assert.equal(save1.id, save2.id, 'Duplicate saves must return the same SavedLead record ID');
+});
+

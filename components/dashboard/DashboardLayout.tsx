@@ -6,11 +6,12 @@ import DashboardHeader from './DashboardHeader';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
+  activeTab?: string;
 }
 
-export default function DashboardLayout({ children }: DashboardLayoutProps) {
+export default function DashboardLayout({ children, activeTab: initialActiveTab }: DashboardLayoutProps) {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState('dashboard');
+  const [activeTab, setActiveTab] = useState(initialActiveTab || 'dashboard');
 
   return (
     <div className="dashboard-container">

@@ -1,14 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Search, MapPin, Briefcase, Hash } from 'lucide-react';
+import { Search, MapPin, Briefcase } from 'lucide-react';
 
 interface SearchPanelProps {
-  onSearch?: (criteria: { location: string; industry: string; maxResults: number }) => void;
+  onSearch?: (criteria: { location: string; industry: string }) => void;
   isSearching?: boolean;
   initialLocation?: string;
   initialIndustry?: string;
-  initialMaxResults?: number;
 }
 
 const COMMON_INDUSTRIES = [
@@ -29,11 +28,9 @@ export default function SearchPanel({
   isSearching = false,
   initialLocation = '',
   initialIndustry = '',
-  initialMaxResults = 25,
 }: SearchPanelProps) {
   const [location, setLocation] = useState(initialLocation);
   const [industry, setIndustry] = useState(initialIndustry);
-  const [maxResults, setMaxResults] = useState(String(initialMaxResults));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -41,7 +38,6 @@ export default function SearchPanel({
       onSearch({
         location: location.trim(),
         industry: industry.trim(),
-        maxResults: parseInt(maxResults, 10) || 25,
       });
     }
   };
@@ -76,7 +72,7 @@ export default function SearchPanel({
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr)) 180px',
             gap: '1rem',
             alignItems: 'flex-end',
           }}
@@ -125,27 +121,6 @@ export default function SearchPanel({
                 <option key={ind} value={ind} />
               ))}
             </datalist>
-          </div>
-
-          {/* Max Results */}
-          <div className="form-group" style={{ maxWidth: '140px' }}>
-            <label
-              htmlFor="search-max"
-              style={{ display: 'flex', alignItems: 'center', gap: '0.35rem' }}
-            >
-              <Hash size={14} /> Max Results
-            </label>
-            <select
-              id="search-max"
-              value={maxResults}
-              onChange={(e) => setMaxResults(e.target.value)}
-              disabled={isSearching}
-              className="neo-select"
-            >
-              <option value="10">10</option>
-              <option value="25">25</option>
-              <option value="50">50</option>
-            </select>
           </div>
 
           {/* Submit Button */}

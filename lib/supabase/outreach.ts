@@ -432,3 +432,98 @@ export async function cancelLeadFollowUp(
   });
   return true;
 }
+
+/**
+ * Retrieves all outreach emails across leads for an authenticated user
+ */
+export async function getAllOutreachEmails(userId?: string | null): Promise<
+  (LeadEmailRecord & {
+    businessName?: string;
+    businessCategory?: string;
+    businessAddress?: string;
+  })[]
+> {
+  const supabase = await createServerSupabaseClient();
+
+  if (supabase) {
+    try {
+      let leadsQuery = supabase.from('saved_leads').select('id, business_id');
+      if (userId) {
+        leadsQuery = leadsQuery.eq('user_id', userId);
+      }
+      const { data: userLeads } = await leadsQuery;
+
+      if (userLeads && userLeads.length > 0) {
+        const leadIds = userLeads.map((l: any) => l.id);
+        const bizIds = userLeads.map((l: any) => l.business_id);
+
+        const [emailsRes, bizRes] = await Promise.all([
+          supabase
+            .from('lead_emails')
+            .select('*')
+            .in('saved_lead_id', leadIds)
+            .order('created_at', { ascending: false }),
+          supabase
+            .from('businesses')
+            .select('google_place_id, name, category, address')
+            .in('google_place_id', bizIds),
+        ]);
+
+        const bizMap = new Map((bizRes.data || []).map((b: any) => [b.google_place_id, b]));
+        const leadToBizMap = new Map(userLeads.map((l: any) => [l.id, l.business_id]));
+
+        if (emailsRes.data && (emailsRes.data as any[]).length > 0) {
+          return (emailsRes.data as any[]).map((r: any) => {
+            const bizId = leadToBizMap.get(r.saved_lead_id);
+            const biz: any = bizId ? bizMap.get(bizId) : undefined;
+
+            return {
+              id: r.id,
+              savedLeadId: r.saved_lead_id,
+              toEmail: r.to_email,
+              fromEmail: r.from_email,
+              replyTo: r.reply_to,
+              subject: r.subject,
+              body: r.body,
+              status: r.status as EmailStatus,
+              provider: r.provider,
+              providerMessageId: r.provider_message_id,
+              errorMessage: r.error_message,
+              sentAt: r.sent_at,
+              createdAt: r.created_at,
+              updatedAt: r.updated_at,
+              businessName: biz?.name || 'Local Business',
+              businessCategory: biz?.category || 'Business',
+              businessAddress: biz?.address || '',
+            };
+          });
+        }
+      }
+    } catch {
+      // Fall through to memory
+    }
+  }
+
+  // Memory fallback
+  const results: (LeadEmailRecord & {
+    businessName?: string;
+    businessCategory?: string;
+    businessAddress?: string;
+  })[] = [];
+
+  for (const [, list] of memEmails.entries()) {
+    for (const email of list) {
+      results.push({
+        ...email,
+        businessName: 'Local Business',
+        businessCategory: 'Business',
+        businessAddress: '',
+      });
+    }
+  }
+
+  return results.sort(
+    (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  );
+}
+

@@ -1,10 +1,14 @@
-import { GoogleSearchPlacesParams, GooglePlacesSearchTextResponse, GooglePlaceRaw } from './types';
+import {
+  GoogleSearchPlacesParams,
+  GooglePlacesSearchTextResponse,
+  GooglePlaceRaw,
+  GoogleSearchPlacesResult,
+} from './types';
 import { normalizeGooglePlaces } from './normalize';
-import { Business } from '@/types';
 
 const PLACES_API_URL = 'https://places.googleapis.com/v1/places:searchText';
 
-// Minimally required field mask according to Principle 8
+// Minimally required field mask with nextPageToken for pagination
 const FIELD_MASK = [
   'places.id',
   'places.displayName',
@@ -20,13 +24,20 @@ const FIELD_MASK = [
   'places.location',
   'places.googleMapsUri',
   'places.businessStatus',
+  'nextPageToken',
 ].join(',');
 
 export class GooglePlacesError extends Error {
   constructor(
     message: string,
     public statusCode: number = 500,
-    public code: 'NOT_CONFIGURED' | 'QUOTA_EXCEEDED' | 'INVALID_KEY' | 'API_ERROR' | 'NETWORK_ERROR' = 'API_ERROR'
+    public code:
+      | 'NOT_CONFIGURED'
+      | 'QUOTA_EXCEEDED'
+      | 'INVALID_KEY'
+      | 'INVALID_PAGE_TOKEN'
+      | 'API_ERROR'
+      | 'NETWORK_ERROR' = 'API_ERROR'
   ) {
     super(message);
     this.name = 'GooglePlacesError';
@@ -34,94 +45,107 @@ export class GooglePlacesError extends Error {
 }
 
 /**
- * Isolated mock provider for local development testing when USE_MOCK_PLACES=true
+ * Mock business name prefixes and streets for generating realistic pagination data
  */
-function getMockPlaces(location: string, industry: string, limit: number): GooglePlaceRaw[] {
-  const baseMocks: GooglePlaceRaw[] = [
-    {
-      id: `mock-place-1-${Date.now()}`,
-      displayName: { text: `The Grand ${industry || 'Bistro'}` },
-      primaryTypeDisplayName: { text: industry || 'Restaurant' },
-      formattedAddress: `101 Central Blvd, ${location}`,
-      nationalPhoneNumber: '+91 512 234 5678',
-      websiteUri: 'https://grandbistro-demo.com',
-      rating: 4.8,
-      userRatingCount: 342,
-      location: { latitude: 26.4499, longitude: 80.3319 },
-      googleMapsUri: `https://maps.google.com/?q=${encodeURIComponent(`The Grand ${industry} ${location}`)}`,
-      businessStatus: 'OPERATIONAL',
-    },
-    {
-      id: `mock-place-2-${Date.now()}`,
-      displayName: { text: `Kanpur ${industry || 'Services'} Co.` },
-      primaryTypeDisplayName: { text: industry || 'Contractor' },
-      formattedAddress: `24 Swaroop Nagar, ${location}`,
-      nationalPhoneNumber: '+91 512 987 6543',
-      websiteUri: undefined, // NO WEBSITE DEMO
-      rating: 4.4,
-      userRatingCount: 88,
-      location: { latitude: 26.4725, longitude: 80.3186 },
-      googleMapsUri: `https://maps.google.com/?q=${encodeURIComponent(`Kanpur ${industry} Co ${location}`)}`,
-      businessStatus: 'OPERATIONAL',
-    },
-    {
-      id: `mock-place-3-${Date.now()}`,
-      displayName: { text: `Royal ${industry || 'Hub'} & Lounge` },
-      primaryTypeDisplayName: { text: industry || 'Store' },
-      formattedAddress: `88 Mall Road, ${location}`,
-      nationalPhoneNumber: '+91 512 456 7890',
-      websiteUri: 'https://royalhub-example.com',
-      rating: 4.6,
-      userRatingCount: 156,
-      location: { latitude: 26.4658, longitude: 80.3498 },
-      googleMapsUri: `https://maps.google.com/?q=${encodeURIComponent(`Royal Hub ${location}`)}`,
-      businessStatus: 'OPERATIONAL',
-    },
-    {
-      id: `mock-place-4-${Date.now()}`,
-      displayName: { text: `Apex ${industry || 'Solutions'}` },
-      primaryTypeDisplayName: { text: industry || 'Professional Services' },
-      formattedAddress: `12 Civil Lines, ${location}`,
-      nationalPhoneNumber: '+91 512 333 4444',
-      websiteUri: undefined, // NO WEBSITE DEMO
-      rating: 4.2,
-      userRatingCount: 45,
-      location: { latitude: 26.4712, longitude: 80.3521 },
-      googleMapsUri: `https://maps.google.com/?q=${encodeURIComponent(`Apex Solutions ${location}`)}`,
-      businessStatus: 'OPERATIONAL',
-    },
-    {
-      id: `mock-place-5-${Date.now()}`,
-      displayName: { text: `Star ${industry || 'Care'}` },
-      primaryTypeDisplayName: { text: industry || 'Care' },
-      formattedAddress: `55 Gumti No. 5, ${location}`,
-      nationalPhoneNumber: '+91 512 888 9999',
-      websiteUri: 'https://starcare-demo.org',
-      rating: 4.9,
-      userRatingCount: 512,
-      location: { latitude: 26.481, longitude: 80.312 },
-      googleMapsUri: `https://maps.google.com/?q=${encodeURIComponent(`Star Care ${location}`)}`,
-      businessStatus: 'OPERATIONAL',
-    },
-  ];
+const MOCK_PREFIXES = [
+  'Apex', 'Royal', 'Grand', 'Summit', 'Prime', 'Elite', 'Metro', 'Pinnacle',
+  'Starlight', 'Vanguard', 'Precision', 'Heritage', 'Nexus', 'Horizon', 'Infinity',
+  'Titan', 'Zenith', 'Silver', 'Golden', 'Benchmark', 'Diamond', 'Crown', 'Radiant',
+  'Bliss', 'Nova', 'Crest', 'Beacon', 'Sovereign', 'Prestige', 'Ascent', 'Paramount',
+  'Pioneer', 'Catalyst', 'Frontier', 'Olympus', 'Trillium', 'Empower', 'Stellar',
+  'Velocity', 'Solace', 'Signature', 'Sterling', 'Sentry', 'Matrix', 'Atlas',
+  'Prosper', 'Genesis', 'Venture', 'Harbor', 'TrueNorth', 'Optima', 'Meridian',
+  'Capital', 'Unity', 'Liberty', 'Civic', 'Imperial', 'Galaxy', 'Radiance', 'Solstice'
+];
 
-  return baseMocks.slice(0, limit);
+const MOCK_STREETS = [
+  'Central Blvd', 'Mall Road', 'Swaroop Nagar', 'Civil Lines', 'Gumti No. 5',
+  'MG Road', 'Park Street', 'Ring Road', 'Station Road', 'Connaught Circle',
+  'Commerce Ave', 'Grand Trunk Rd', 'High Street', 'Market Square', 'Greenway Lane'
+];
+
+/**
+ * Isolated mock provider for local development and testing when USE_MOCK_PLACES=true
+ * Generates 3 pages of 20 unique businesses (60 total) with realistic data and tokens
+ */
+function getMockPlacesPage(
+  location: string,
+  industry: string,
+  pageToken?: string
+): { places: GooglePlaceRaw[]; nextPageToken?: string; hasMore: boolean } {
+  let pageNum = 1;
+  if (pageToken === 'mock-page-2') pageNum = 2;
+  else if (pageToken === 'mock-page-3') pageNum = 3;
+
+  const pageSize = 20;
+  const startIndex = (pageNum - 1) * pageSize;
+  const places: GooglePlaceRaw[] = [];
+
+  for (let i = 0; i < pageSize; i++) {
+    const globalIndex = startIndex + i;
+    const prefix = MOCK_PREFIXES[globalIndex % MOCK_PREFIXES.length];
+    const street = MOCK_STREETS[globalIndex % MOCK_STREETS.length];
+    const streetNum = 10 + (globalIndex * 7) % 300;
+    
+    // Distribute realistic website availability: ~40% have no website or poor website
+    const hasWeb = globalIndex % 3 !== 0;
+    const websiteUri = hasWeb ? `https://${prefix.toLowerCase()}-${industry.toLowerCase().replace(/[^a-z0-9]/g, '')}-demo.com` : undefined;
+    const rating = Math.round((3.8 + ((globalIndex * 13) % 12) / 10) * 10) / 10;
+    const userRatingCount = 15 + ((globalIndex * 37) % 450);
+
+    places.push({
+      id: `mock-place-p${pageNum}-${i + 1}`,
+      displayName: { text: `${prefix} ${industry || 'Business'}` },
+      primaryTypeDisplayName: { text: industry || 'Local Business' },
+      formattedAddress: `${streetNum} ${street}, ${location}`,
+      nationalPhoneNumber: `+91 512 ${(1000 + (globalIndex * 111)) % 9000} ${5000 + globalIndex}`,
+      websiteUri,
+      rating,
+      userRatingCount,
+      location: {
+        latitude: 26.4499 + (globalIndex * 0.003),
+        longitude: 80.3319 + (globalIndex * 0.003),
+      },
+      googleMapsUri: `https://maps.google.com/?q=${encodeURIComponent(`${prefix} ${industry} ${location}`)}`,
+      businessStatus: 'OPERATIONAL',
+    });
+  }
+
+  let nextPageToken: string | undefined;
+  if (pageNum === 1) {
+    nextPageToken = 'mock-page-2';
+  } else if (pageNum === 2) {
+    nextPageToken = 'mock-page-3';
+  } else {
+    nextPageToken = undefined;
+  }
+
+  return {
+    places,
+    nextPageToken,
+    hasMore: Boolean(nextPageToken),
+  };
 }
 
 /**
- * Executes a location-aware search on Google Places API (New)
+ * Executes a location-aware search on Google Places API (New) with pagination support
  */
 export async function searchGooglePlaces(
   params: GoogleSearchPlacesParams
-): Promise<Business[]> {
-  const { location, industry, limit = 20 } = params;
+): Promise<GoogleSearchPlacesResult> {
+  const { location, industry, limit = 20, pageToken } = params;
   const apiKey = process.env.GOOGLE_MAPS_API_KEY?.trim();
   const useMock = process.env.USE_MOCK_PLACES === 'true';
 
-  // 1. Mock Mode (explicitly opted in for development)
+  // 1. Mock Mode (explicitly opted in for development / testing)
   if (useMock) {
-    const rawMocks = getMockPlaces(location, industry, limit);
-    return normalizeGooglePlaces(rawMocks, industry);
+    const mockData = getMockPlacesPage(location, industry, pageToken);
+    const businesses = normalizeGooglePlaces(mockData.places, industry);
+    return {
+      businesses: businesses.slice(0, limit),
+      nextPageToken: mockData.nextPageToken,
+      hasMore: mockData.hasMore,
+    };
   }
 
   // 2. Configuration Validation
@@ -133,9 +157,18 @@ export async function searchGooglePlaces(
     );
   }
 
-  // 3. Construct Search Query
+  // 3. Construct Search Query & Request Payload
   const textQuery = `${industry.trim()} in ${location.trim()}`;
   const maxPageSize = Math.min(Math.max(limit, 1), 20); // Places API New max is 20 per page
+
+  const requestBody: Record<string, unknown> = {
+    textQuery,
+    pageSize: maxPageSize,
+  };
+
+  if (pageToken && pageToken.trim().length > 0) {
+    requestBody.pageToken = pageToken.trim();
+  }
 
   try {
     const response = await fetch(PLACES_API_URL, {
@@ -145,16 +178,13 @@ export async function searchGooglePlaces(
         'X-Goog-Api-Key': apiKey,
         'X-Goog-FieldMask': FIELD_MASK,
       },
-      body: JSON.stringify({
-        textQuery,
-        pageSize: maxPageSize,
-      }),
-      signal: AbortSignal.timeout(10000), // 10s timeout
+      body: JSON.stringify(requestBody),
+      signal: AbortSignal.timeout(12000), // 12s timeout
     });
 
     if (!response.ok) {
       const status = response.status;
-      let errorBody: { error?: { message?: string; status?: string } } = {};
+      let errorBody: { error?: { message?: string; status?: string; details?: unknown[] } } = {};
       try {
         errorBody = await response.json();
       } catch {
@@ -166,6 +196,18 @@ export async function searchGooglePlaces(
         statusText: response.statusText,
         error: errorBody.error?.message || 'Unknown error',
       });
+
+      if (status === 400) {
+        // Check if error is related to invalid/expired page token
+        const errorMsg = (errorBody.error?.message || '').toLowerCase();
+        if (errorMsg.includes('page token') || errorMsg.includes('pagetoken') || errorMsg.includes('token')) {
+          throw new GooglePlacesError(
+            'The search page session has expired or is invalid. Please start a new search.',
+            400,
+            'INVALID_PAGE_TOKEN'
+          );
+        }
+      }
 
       if (status === 403 || status === 401) {
         throw new GooglePlacesError(
@@ -184,7 +226,7 @@ export async function searchGooglePlaces(
       }
 
       throw new GooglePlacesError(
-        'Business search is temporarily unavailable. Please try again.',
+        errorBody.error?.message || 'Business search is temporarily unavailable. Please try again.',
         502,
         'API_ERROR'
       );
@@ -192,8 +234,13 @@ export async function searchGooglePlaces(
 
     const data: GooglePlacesSearchTextResponse = await response.json();
     const rawPlaces = data.places || [];
+    const businesses = normalizeGooglePlaces(rawPlaces, industry);
 
-    return normalizeGooglePlaces(rawPlaces, industry);
+    return {
+      businesses,
+      nextPageToken: data.nextPageToken || undefined,
+      hasMore: Boolean(data.nextPageToken && data.nextPageToken.trim().length > 0),
+    };
   } catch (error: unknown) {
     if (error instanceof GooglePlacesError) {
       throw error;

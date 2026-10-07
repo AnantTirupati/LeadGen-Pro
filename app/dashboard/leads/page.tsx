@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/dashboard/DashboardLayout';
 import StatCard from '@/components/dashboard/StatCard';
 import { SavedLead, LeadStatus, LeadCrmStats } from '@/lib/sales/types';
 import { getOpportunityBadgeDetails } from '@/lib/leads/classifier';
+import { useSearch } from '@/lib/context/SearchContext';
 import {
   Users,
   Send,
@@ -62,6 +63,8 @@ export default function LeadsCrmPage() {
   const [opportunityFilter, setOpportunityFilter] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [sortBy, setSortBy] = useState<'score' | 'recent' | 'name' | 'followup'>('recent');
+
+  const { refreshSavedLeads } = useSearch();
 
   useEffect(() => {
     loadLeads();
@@ -120,6 +123,7 @@ export default function LeadsCrmPage() {
 
     try {
       await fetch(`/api/leads/${leadId}`, { method: 'DELETE' });
+      await refreshSavedLeads();
       const statsRes = await fetch('/api/leads/stats');
       const statsData = await statsRes.json();
       if (statsData.success && statsData.stats) {
@@ -139,10 +143,11 @@ export default function LeadsCrmPage() {
     const headers = [
       'Business Name',
       'Category',
-      'Location',
-      'Phone',
-      'Website',
-      'Contact Email',
+      'Phone Number',
+      'Available Email',
+      'Website Status (Yes/No)',
+      'Website URL',
+      'Address',
       'Contact Person',
       'Google Rating',
       'Review Count',
@@ -157,14 +162,16 @@ export default function LeadsCrmPage() {
     const rows = leads.map((l) => {
       const biz = l.business;
       const score = l.leadScore;
+      const hasWeb = Boolean(biz?.hasWebsite || (biz?.website && biz.website.trim().length > 0));
 
       return [
         `"${(biz?.name || '').replace(/"/g, '""')}"`,
         `"${(biz?.category || '').replace(/"/g, '""')}"`,
+        `"${(biz?.phone || 'N/A').replace(/"/g, '""')}"`,
+        `"${(l.contactEmail || 'N/A').replace(/"/g, '""')}"`,
+        hasWeb ? 'Yes' : 'No',
+        `"${(biz?.website || 'None').replace(/"/g, '""')}"`,
         `"${(biz?.address || '').replace(/"/g, '""')}"`,
-        `"${(biz?.phone || '').replace(/"/g, '""')}"`,
-        `"${(biz?.website || 'No Website').replace(/"/g, '""')}"`,
-        `"${(l.contactEmail || '').replace(/"/g, '""')}"`,
         `"${(l.contactName || '').replace(/"/g, '""')}"`,
         biz?.rating ?? 'N/A',
         biz?.reviewCount ?? 0,
@@ -177,14 +184,16 @@ export default function LeadsCrmPage() {
       ].join(',');
     });
 
-    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows].join('\n');
-    const encodedUri = encodeURI(csvContent);
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.setAttribute('href', url);
     link.setAttribute('download', `leadgen_pro_leads_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Filter and sort leads

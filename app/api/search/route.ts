@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { location, industry, limit } = body;
+    const { location, industry, limit, pageToken } = body;
 
     // 1. Validation
     if (!location || typeof location !== 'string' || location.trim().length < 2) {
@@ -35,29 +35,45 @@ export async function POST(request: NextRequest) {
     }
 
     const parsedLimit = typeof limit === 'number' ? limit : parseInt(limit, 10);
-    const validatedLimit = isNaN(parsedLimit) || parsedLimit < 1 ? 25 : Math.min(parsedLimit, 50);
+    const validatedLimit = isNaN(parsedLimit) || parsedLimit < 1 ? 20 : Math.min(parsedLimit, 20);
 
     const cleanLocation = location.trim();
     const cleanIndustry = industry.trim();
+    const cleanPageToken =
+      typeof pageToken === 'string' && pageToken.trim().length > 0
+        ? pageToken.trim()
+        : undefined;
 
-    // 2. Fetch from Google Places service
-    const businesses = await searchGooglePlaces({
+    // 2. Fetch from Google Places service with pagination support
+    const result = await searchGooglePlaces({
       location: cleanLocation,
       industry: cleanIndustry,
       limit: validatedLimit,
+      pageToken: cleanPageToken,
     });
 
-    // 3. Upsert to Supabase in background / non-blocking
-    await upsertBusinessesToSupabase(businesses);
-    await recordSearchToSupabase(cleanLocation, cleanIndustry, businesses.length, user?.id);
+    // 3. Upsert newly discovered businesses to Supabase
+    await upsertBusinessesToSupabase(result.businesses);
 
-    // 4. Return normalized results
+    // Only record a search entry for the initial search (Page 1)
+    if (!cleanPageToken) {
+      await recordSearchToSupabase(
+        cleanLocation,
+        cleanIndustry,
+        result.businesses.length,
+        user?.id
+      );
+    }
+
+    // 4. Return normalized results with pagination metadata
     return NextResponse.json({
       success: true,
-      count: businesses.length,
+      count: result.businesses.length,
       location: cleanLocation,
       industry: cleanIndustry,
-      businesses,
+      businesses: result.businesses,
+      nextPageToken: result.nextPageToken,
+      hasMore: result.hasMore,
     });
   } catch (error: unknown) {
     if (error instanceof GooglePlacesError) {

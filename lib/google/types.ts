@@ -44,4 +44,11 @@ export interface GoogleSearchPlacesParams {
   location: string;
   industry: string;
   limit?: number;
+  pageToken?: string;
+}
+
+export interface GoogleSearchPlacesResult {
+  businesses: import('@/types').Business[];
+  nextPageToken?: string;
+  hasMore: boolean;
 }

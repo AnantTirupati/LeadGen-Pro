@@ -193,18 +193,21 @@ export default function LeadDetailsPage({ params }: { params: Promise<{ id: stri
   const loadPitches = async (leadId: string) => {
     try {
       const res = await fetch(`/api/leads/${encodeURIComponent(leadId)}/pitch`);
-      const data = await res.json();
-      if (res.ok && data.success && Array.isArray(data.pitches)) {
-        setPitches(data.pitches);
-        if (data.pitches.length > 0) {
-          const latest: SalesPitch = data.pitches[0];
-          setActivePitchId(latest.id);
-          setPitchSubject(latest.subject || '');
-          setPitchBody(latest.body || '');
-          if (!emailSubject) setEmailSubject(latest.subject || '');
-          if (!emailBody) setEmailBody(latest.body || '');
-          if (latest.personalizationPoints) {
-            setPersonalizationPoints(latest.personalizationPoints);
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.pitches)) {
+          setPitches(data.pitches);
+          if (data.pitches.length > 0) {
+            const latest: SalesPitch = data.pitches[0];
+            setActivePitchId(latest.id);
+            setPitchSubject(latest.subject || '');
+            setPitchBody(latest.body || '');
+            if (!emailSubject) setEmailSubject(latest.subject || '');
+            if (!emailBody) setEmailBody(latest.body || '');
+            if (latest.personalizationPoints) {
+              setPersonalizationPoints(latest.personalizationPoints);
+            }
           }
         }
       }
@@ -216,9 +219,12 @@ export default function LeadDetailsPage({ params }: { params: Promise<{ id: stri
   const loadActivities = async (leadId: string) => {
     try {
       const res = await fetch(`/api/leads/${encodeURIComponent(leadId)}/activities`);
-      const data = await res.json();
-      if (res.ok && data.success && Array.isArray(data.activities)) {
-        setActivities(data.activities);
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.activities)) {
+          setActivities(data.activities);
+        }
       }
     } catch (err) {
       console.error('[Load activities error]', err);
@@ -228,9 +234,12 @@ export default function LeadDetailsPage({ params }: { params: Promise<{ id: stri
   const loadEmails = async (leadId: string) => {
     try {
       const res = await fetch(`/api/leads/${encodeURIComponent(leadId)}/email`);
-      const data = await res.json();
-      if (res.ok && data.success && Array.isArray(data.emails)) {
-        setEmailHistory(data.emails);
+      const contentType = res.headers.get('content-type');
+      if (res.ok && contentType && contentType.includes('application/json')) {
+        const data = await res.json();
+        if (data.success && Array.isArray(data.emails)) {
+          setEmailHistory(data.emails);
+        }
       }
     } catch (err) {
       console.error('[Load emails error]', err);
